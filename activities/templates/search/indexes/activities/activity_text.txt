@@ -1,0 +1,11 @@
+{{ object.start_date }}
+{{ object.end_date }}
+{{ object.country }}
+{{ object.region }}
+{{ object.activity }}
+{{ object.objective }}
+{{ object.thematic }}
+{{ object.thematic_exact }}
+{{ object.directorate }}
+{{ object.url }}
+{{ object.db_id }}
