@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from django.core.paginator import Paginator, EmptyPage
 from urllib.parse import unquote
 from django.db import transaction
+from django.db.models import Max
 from rest_framework import status
 
 def _get_list_param(request, name):
@@ -170,9 +171,8 @@ class ActivitiesPaginatedView(APIView):
     Returns paginated Solr records with only *_exact fields, 10 per page.
     """
     SOLR_FIELDS_TO_RETRIEVE = [
-        'id', 'db_id', 'url', 'start_date', 'end_date', 'country_exact', 
-        'region_exact', 'activity_exact', 'objective_exact', 
-        'thematic_exact', 'directorate_exact'
+        'id', 'db_id', 'url', 'start_date', 'end_date', 'country_exact', 'region_exact', 
+        'activity_exact', 'objective_exact', 'thematic_exact', 'directorate_exact'
     ]
 
     def get(self, request):
@@ -469,10 +469,22 @@ class BulkUploadActivitiesView(APIView):
             # ------------------------------------------------------------------
             # 💾 Step 5: Bulk insert inside atomic transaction
             # ------------------------------------------------------------------
+            existing_max_id = Activity.objects.aggregate(max_id=Max('id'))['max_id'] or 0
+
             with transaction.atomic():
                 created = Activity.objects.bulk_create(
                     activities, ignore_conflicts=True
                 )
+
+                if activities:
+                    def reindex_on_commit():
+                        backend = connections['default'].get_backend()
+                        index = connections['default'].get_unified_index().get_index(Activity)
+                        new_instances = list(Activity.objects.filter(id__gt=existing_max_id))
+                        if new_instances:
+                            backend.update(index, new_instances)
+
+                    transaction.on_commit(reindex_on_commit)
 
             imported_count = len(created)
 
